@@ -1,7 +1,9 @@
+from sklearn.decomposition import PCA
 import numpy as np
 from sklearn.datasets import fetch_openml
 from sklearn.metrics import confusion_matrix, accuracy_score
 import matplotlib.pyplot as plt
+import time
 
 class DecisionStump:
     def __init__(self, n_features):
@@ -152,9 +154,116 @@ def experiment(T_values, A_values, X_train, y_train, X_test, y_test):
             accuracies = []
             times = []
             for _ in range(5):  # Ejecutar cinco veces para promediar
+                accuracy_per_digit = []
+                time_per_digit = []
+                for digit in range(10):
+                    # Balancear el conjunto de entrenamiento para el dígito actual
+                    X_train_balanced, y_train_balanced = balance_dataset(X_train, y_train, digit)
+                    y_train_balanced = np.where(y_train_balanced == digit, 1, -1)
+                    y_test_digit = np.where(y_test == digit, 1, -1)
+                    
+                    start_time = time.time()
+                    
+                    clf = AdaboostBinario(T=T, A=A)
+                    clf.fit(X_train_balanced, y_train_balanced)
+                    y_pred = clf.predict(X_test)
+                    
+                    accuracy = accuracy_score(y_test_digit, y_pred)
+                    elapsed_time = time.time() - start_time
+                    
+                    accuracy_per_digit.append(accuracy)
+                    time_per_digit.append(elapsed_time)
+                
+                accuracies.append(np.mean(accuracy_per_digit))
+                times.append(np.mean(time_per_digit))
+            
+            results['T'].append(T)
+            results['A'].append(A)
+            results['accuracy'].append(np.mean(accuracies))
+            results['time'].append(np.mean(times))
+    
+    return results
+
+def plot_results(results, fixed_param, param_name):
+    plt.figure(figsize=(12, 6))
+    
+    plt.subplot(1, 2, 1)
+    for param in np.unique(results[fixed_param]):
+        subset = [i for i in range(len(results[fixed_param])) if results[fixed_param][i] == param]
+        plt.plot([results[param_name][i] for i in subset], [results['accuracy'][i] for i in subset], label=f'{fixed_param}={param}')
+    plt.xlabel(param_name)
+    plt.ylabel('Accuracy')
+    plt.title(f'Accuracy vs {param_name} for different {fixed_param} values')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    for param in np.unique(results[fixed_param]):
+        subset = [i for i in range(len(results[fixed_param])) if results[fixed_param][i] == param]
+        plt.plot([results[param_name][i] for i in subset], [results['time'][i] for i in subset], label=f'{fixed_param}={param}')
+    plt.xlabel(param_name)
+    plt.ylabel('Time (s)')
+    plt.title(f'Time vs {param_name} for different {fixed_param} values')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+class AdaboostMulticlase:
+    def __init__(self, T=5, A=20, n_components=50):
+        self.T = T
+        self.A = A
+        self.classifiers = []
+        self.classes = []
+        self.n_components = n_components
+        self.pca = PCA(n_components=n_components)
+
+    def fit(self, X, y):
+        X_reduced = self.pca.fit_transform(X)
+        self.classes = np.unique(y)
+        self.classifiers = []
+        
+        for cls in self.classes:
+            y_binary = np.where(y == cls, 1, -1)
+            clf = AdaboostBinario(T=self.T, A=self.A)
+            clf.fit(X_reduced, y_binary)
+            self.classifiers.append(clf)
+
+    def predict(self, X):
+        X_reduced = self.pca.transform(X)
+        clf_preds = np.array([clf.predict(X_reduced) for clf in self.classifiers])
+        return self.classes[np.argmax(clf_preds, axis=0)]
+
+def train_and_evaluate_multiclase(X_train, y_train, X_test, y_test):
+    clf = AdaboostMulticlase(T=10, A=20)
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    
+    conf_mat = confusion_matrix(y_test, y_pred)
+    accuracy = accuracy_score(y_test, y_pred)
+
+    print("Clasificador Multiclase:")
+    print("Matriz de Confusión:")
+    print(conf_mat)
+    print(f"Precisión: {accuracy * 100:.2f}%")
+    
+    plt.matshow(conf_mat)
+    plt.title('Matriz de Confusión para el clasificador multiclase')
+    plt.colorbar()
+    plt.ylabel('Etiqueta Real')
+    plt.xlabel('Etiqueta Predicha')
+    plt.show()
+
+def experiment_multiclase(T_values, A_values, X_train, y_train, X_test, y_test):
+    results = {'T': [], 'A': [], 'accuracy': [], 'time': []}
+    
+    for T in T_values:
+        for A in A_values:
+            accuracies = []
+            times = []
+            for _ in range(5):  # Ejecutar cinco veces para promediar
                 start_time = time.time()
                 
-                clf = AdaboostBinario(T=T, A=A)
+                clf = AdaboostMulticlase(T=T, A=A)
                 clf.fit(X_train, y_train)
                 y_pred = clf.predict(X_test)
                 
@@ -171,33 +280,52 @@ def experiment(T_values, A_values, X_train, y_train, X_test, y_test):
     
     return results
 
-def plot_results(results):
-    T_values = np.unique(results['T'])
-    A_values = np.unique(results['A'])
+def train_and_evaluate_multiclase_pca(X_train, y_train, X_test, y_test, n_components):
+    clf = AdaboostMulticlase(T=100, A=50, n_components=n_components)
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
     
-    plt.figure(figsize=(12, 6))
+    conf_mat = confusion_matrix(y_test, y_pred)
+    accuracy = accuracy_score(y_test, y_pred)
 
-    plt.subplot(1, 2, 1)
-    for A in A_values:
-        subset = [i for i in range(len(results['A'])) if results['A'][i] == A]
-        plt.plot(T_values, [results['accuracy'][i] for i in subset], label=f'A={A}')
-    plt.xlabel('T')
-    plt.ylabel('Accuracy')
-    plt.title('Accuracy vs T for different A values')
-    plt.legend()
-
-    plt.subplot(1, 2, 2)
-    for A in A_values:
-        subset = [i for i in range(len(results['A'])) if results['A'][i] == A]
-        plt.plot(T_values, [results['time'][i] for i in subset], label=f'A={A}')
-    plt.xlabel('T')
-    plt.ylabel('Time (s)')
-    plt.title('Time vs T for different A values')
-    plt.legend()
-
-    plt.tight_layout()
+    print(f"Clasificador Multiclase con PCA (n_components={n_components}):")
+    print("Matriz de Confusión:")
+    print(conf_mat)
+    print(f"Precisión: {accuracy * 100:.2f}%")
+    
+    plt.matshow(conf_mat)
+    plt.title(f'Matriz de Confusión para el clasificador multiclase (n_components={n_components})')
+    plt.colorbar()
+    plt.ylabel('Etiqueta Real')
+    plt.xlabel('Etiqueta Predicha')
     plt.show()
 
+def experiment_multiclase_pca(T_values, A_values, X_train, y_train, X_test, y_test, n_components):
+    results = {'T': [], 'A': [], 'accuracy': [], 'time': []}
+    
+    for T in T_values:
+        for A in A_values:
+            accuracies = []
+            times = []
+            for _ in range(5):  # Ejecutar cinco veces para promediar
+                start_time = time.time()
+                
+                clf = AdaboostMulticlase(T=T, A=A, n_components=n_components)
+                clf.fit(X_train, y_train)
+                y_pred = clf.predict(X_test)
+                
+                accuracy = accuracy_score(y_test, y_pred)
+                elapsed_time = time.time() - start_time
+                
+                accuracies.append(accuracy)
+                times.append(elapsed_time)
+            
+            results['T'].append(T)
+            results['A'].append(A)
+            results['accuracy'].append(np.mean(accuracies))
+            results['time'].append(np.mean(times))
+    
+    return results
 
 # Función principal para entrenar y mostrar resultados
 def main():
@@ -216,18 +344,33 @@ def main():
     X_train, X_test = X[:60000], X[60000:]
     y_train, y_test = y[:60000], y[60000:]
 
+    #1A
     #ClasificadorAdaBoost(X_train, y_train, X_test, y_test)
 
-    T_values = [10, 20, 30]
-    A_values = [10, 20, 30]
-    
-    y_train_digit = np.where(y_train == 0, 1, -1)
-    y_test_digit = np.where(y_test == 0, 1, -1)
-    X_train_balanced, y_train_balanced = balance_dataset(X_train, y_train, 0)
-    y_train_balanced = np.where(y_train_balanced == 0, 1, -1)
+    #1B
+    #T_values = [10, 30]
+    #A_values = [10, 90]
+    #results_comb = experiment(T_values, A_values, X_train, y_train, X_test, y_test)
+    #plot_results(results_comb, 'T', 'A')
 
-    results = experiment(T_values, A_values, X_train_balanced, y_train_balanced, X_test, y_test_digit)
-    plot_results(results)
+    #1C
+    #train_and_evaluate_multiclase(X_train, y_train, X_test, y_test)
+
+    # Experimentar con diferentes valores de T y A
+    #T_values = [10, 20, 30, 90]
+    #A_values = [10, 20, 30, 30]
+    #results = experiment_multiclase(T_values, A_values, X_train, y_train, X_test, y_test)
+    #plot_results(results, 'T', 'A')
+
+    # Entrenar y evaluar el clasificador multiclase con reducción de dimensionalidad
+    n_components = 50  # Número de componentes principales
+    train_and_evaluate_multiclase_pca(X_train, y_train, X_test, y_test, n_components)
+
+    # Experimentar con diferentes valores de T y A con reducción de dimensionalidad
+    T_values = [30, 60, 70]
+    A_values = [30, 40, 50]
+    results = experiment_multiclase_pca(T_values, A_values, X_train, y_train, X_test, y_test, n_components)
+    plot_results(results, 'T', 'A')
 
 if __name__ == "__main__":
     main()
