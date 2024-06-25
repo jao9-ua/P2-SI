@@ -630,7 +630,7 @@ def main():
     plot_sklearn_results(results_sklearn)'''
 
     #2B
-    kernel_values = ['linear', 'rbf']
+    kernel_values = ['rbf']
     C_values = [0.1, 1, 10]
     results_svm = experiment_svm(kernel_values, C_values, X_train, y_train, X_test, y_test)
     plot_svm_results(results_svm)
