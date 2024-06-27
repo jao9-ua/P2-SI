@@ -1,4 +1,8 @@
 from tensorflow.keras.datasets import mnist
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Dropout
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.utils import to_categorical
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import SVC
@@ -501,53 +505,7 @@ def plot_sklearn_results(results):
     plt.tight_layout()
     plt.show()
 
-def train_and_evaluate_svm(X_train, y_train, X_test, y_test, kernel='linear', C=1.0):
-    # Inicializar el clasificador SVM con los parámetros dados
-    clf = SVC(kernel=kernel, C=C)
 
-    # Entrenar el clasificador SVM
-    start_time = time.time()
-    clf.fit(X_train, y_train)
-    elapsed_time = time.time() - start_time
-
-    # Realizar predicciones en el conjunto de prueba
-    y_pred = clf.predict(X_test)
-
-    # Calcular la matriz de confusión y la precisión
-    conf_mat = confusion_matrix(y_test, y_pred)
-    accuracy = accuracy_score(y_test, y_pred)
-
-    # Mostrar los resultados
-    print(f"Clasificador SVM (kernel={kernel}, C={C}):")
-    print("Matriz de Confusión:")
-    print(conf_mat)
-    print(f"Precisión: {accuracy * 100:.2f}%")
-    print(f"Tiempo de entrenamiento: {elapsed_time:.2f} segundos")
-
-    plt.matshow(conf_mat)
-    plt.title(f'Matriz de Confusión para SVM (kernel={kernel}, C={C})')
-    plt.colorbar()
-    plt.ylabel('Etiqueta Real')
-    plt.xlabel('Etiqueta Predicha')
-    plt.show()
-
-    return accuracy, elapsed_time
-
-def experiment_svm(kernel_values, C_values, X_train, y_train, X_test, y_test):
-    results = {'kernel': [], 'C': [], 'accuracy': [], 'time': []}
-    
-    for kernel in kernel_values:
-        for C in C_values:
-            accuracy, elapsed_time = train_and_evaluate_svm(X_train, y_train, X_test, y_test, kernel=kernel, C=C)
-            
-            results['kernel'].append(kernel)
-            results['C'].append(C)
-            results['accuracy'].append(accuracy)
-            results['time'].append(elapsed_time)
-    
-    return results
-
-def plot_svm_results(results):
     kernel_values = np.unique(results['kernel'])
     C_values = np.unique(results['C'])
     
@@ -569,6 +527,255 @@ def plot_svm_results(results):
     plt.xlabel('C')
     plt.ylabel('Time (s)')
     plt.title('Time vs C for different kernel values')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+def train_and_evaluate_deep_tree_adaboost(X_train, y_train, X_test, y_test, T=50, max_depth=1):
+    clf = AdaBoostClassifier(
+        estimator=DecisionTreeClassifier(max_depth=max_depth),
+        n_estimators=T
+    )
+    start_time = time.time()
+    clf.fit(X_train, y_train)
+    training_time = time.time() - start_time
+    
+    y_pred = clf.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    
+    conf_mat = confusion_matrix(y_test, y_pred)
+    
+    print(f"Clasificador Adaboost con DecisionTree (max_depth={max_depth}, T={T}):")
+    print("Matriz de Confusión:")
+    print(conf_mat)
+    print(f"Precisión: {accuracy * 100:.2f}%")
+    print(f"Tiempo de entrenamiento: {training_time:.2f} segundos")
+    
+    plt.matshow(conf_mat)
+    plt.title(f'Matriz de Confusión para Adaboost con DecisionTree (max_depth={max_depth})')
+    plt.colorbar()
+    plt.ylabel('Etiqueta Real')
+    plt.xlabel('Etiqueta Predicha')
+    plt.show()
+    
+    return accuracy, training_time
+
+def experiment_deep_tree_adaboost(T_values, max_depth_values, X_train, y_train, X_test, y_test):
+    results = {'T': [], 'max_depth': [], 'accuracy': [], 'time': []}
+    
+    for T in T_values:
+        for max_depth in max_depth_values:
+            accuracy, training_time = train_and_evaluate_deep_tree_adaboost(X_train, y_train, X_test, y_test, T=T, max_depth=max_depth)
+            results['T'].append(T)
+            results['max_depth'].append(max_depth)
+            results['accuracy'].append(accuracy)
+            results['time'].append(training_time)
+    
+    return results
+
+def plot_deep_tree_results(results):
+    plt.figure(figsize=(12, 6))
+    
+    plt.subplot(1, 2, 1)
+    for max_depth in np.unique(results['max_depth']):
+        subset = [i for i in range(len(results['max_depth'])) if results['max_depth'][i] == max_depth]
+        plt.plot([results['T'][i] for i in subset], [results['accuracy'][i] for i in subset], label=f'max_depth={max_depth}')
+    plt.xlabel('T')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy vs T for different max_depth values')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    for max_depth in np.unique(results['max_depth']):
+        subset = [i for i in range(len(results['max_depth'])) if results['max_depth'][i] == max_depth]
+        plt.plot([results['T'][i] for i in subset], [results['time'][i] for i in subset], label=f'max_depth={max_depth}')
+    plt.xlabel('T')
+    plt.ylabel('Time (s)')
+    plt.title('Time vs T for different max_depth values')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+def train_and_evaluate_mlp_corrected(X_train, y_train, X_test, y_test, layers, neurons_per_layer, batch_size, learning_rate, epochs, activation='relu'):
+    # Convertir etiquetas a one-hot encoding
+    y_train_cat = to_categorical(y_train, 10)
+    y_test_cat = to_categorical(y_test, 10)
+    
+    # Reshape the data to have the shape (None, 28, 28)
+    X_train_reshaped = X_train.reshape(-1, 28, 28)
+    X_test_reshaped = X_test.reshape(-1, 28, 28)
+    
+    # Construir el modelo
+    model = Sequential()
+    model.add(Flatten(input_shape=(28, 28)))
+    for _ in range(layers):
+        model.add(Dense(neurons_per_layer, activation=activation))
+    model.add(Dense(10, activation='softmax'))
+    
+    # Compilar el modelo
+    optimizer = Adam(learning_rate=learning_rate)
+    model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+    
+    # Entrenar el modelo
+    history = model.fit(X_train_reshaped, y_train_cat, epochs=epochs, batch_size=batch_size, validation_data=(X_test_reshaped, y_test_cat), verbose=1)
+    
+    # Evaluar el modelo
+    test_loss, test_acc = model.evaluate(X_test_reshaped, y_test_cat, verbose=0)
+    
+    # Resultados
+    print(f"MLP con {layers} capas y {neurons_per_layer} neuronas por capa:")
+    print(f"Precisión en el conjunto de prueba: {test_acc * 100:.2f}%")
+    
+    # Matriz de confusión
+    y_pred = model.predict(X_test_reshaped)
+    y_pred_classes = np.argmax(y_pred, axis=1)
+    conf_mat = confusion_matrix(y_test, y_pred_classes)
+    
+    print("Matriz de Confusión:")
+    print(conf_mat)
+    
+    plt.matshow(conf_mat)
+    plt.title(f'Matriz de Confusión para MLP ({layers} capas, {neurons_per_layer} neuronas)')
+    plt.colorbar()
+    plt.ylabel('Etiqueta Real')
+    plt.xlabel('Etiqueta Predicha')
+    plt.show()
+    
+    return test_acc
+
+def experiment_mlp_corrected(X_train, y_train, X_test, y_test):
+    layers_values = [2, 3]
+    neurons_values = [64, 128]
+    batch_size_values = [32, 64]
+    learning_rate_values = [0.001, 0.01]
+    epochs = 20
+    
+    results = {'layers': [], 'neurons': [], 'batch_size': [], 'learning_rate': [], 'accuracy': []}
+    
+    for layers in layers_values:
+        for neurons in neurons_values:
+            for batch_size in batch_size_values:
+                for lr in learning_rate_values:
+                    print(f"Experimentando con {layers} capas, {neurons} neuronas, batch_size={batch_size}, learning_rate={lr}")
+                    acc = train_and_evaluate_mlp_corrected(X_train, y_train, X_test, y_test, layers, neurons, batch_size, lr, epochs)
+                    results['layers'].append(layers)
+                    results['neurons'].append(neurons)
+                    results['batch_size'].append(batch_size)
+                    results['learning_rate'].append(lr)
+                    results['accuracy'].append(acc)
+    
+    return results
+
+def plot_experiment_mlp_results_corrected(results):
+    plt.figure(figsize=(12, 6))
+    
+    plt.subplot(1, 2, 1)
+    for lr in set(results['learning_rate']):
+        subset = [i for i in range(len(results['learning_rate'])) if results['learning_rate'][i] == lr]
+        plt.plot([results['layers'][i] for i in subset], [results['accuracy'][i] for i in subset], label=f'learning_rate={lr}')
+    plt.xlabel('Número de Capas')
+    plt.ylabel('Precisión')
+    plt.title('Precisión vs Número de Capas para diferentes valores de learning_rate')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    for bs in set(results['batch_size']):
+        subset = [i for i in range(len(results['batch_size'])) if results['batch_size'][i] == bs]
+        plt.plot([results['layers'][i] for i in subset], [results['accuracy'][i] for i in subset], label=f'batch_size={bs}')
+    plt.xlabel('Número de Capas')
+    plt.ylabel('Precisión')
+    plt.title('Precisión vs Número de Capas para diferentes valores de batch_size')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+def create_cnn_model(input_shape, num_classes, conv_layers, conv_filters, dense_layers, dense_units, dropout_rate):
+    model = Sequential()
+    
+    # Convolutional layers
+    for _ in range(conv_layers):
+        model.add(Conv2D(conv_filters, (3, 3), activation='relu', input_shape=input_shape))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        conv_filters *= 2  # Double the number of filters with each layer
+
+    model.add(Flatten())
+    
+    # Dense layers
+    for _ in range(dense_layers):
+        model.add(Dense(dense_units, activation='relu'))
+        model.add(Dropout(dropout_rate))
+
+    model.add(Dense(num_classes, activation='softmax'))
+    
+    return model
+
+def train_and_evaluate_cnn(X_train, y_train, X_test, y_test, conv_layers, conv_filters, dense_layers, dense_units, dropout_rate, batch_size, learning_rate, epochs):
+    input_shape = (28, 28, 1)
+    num_classes = 10
+
+    # Preprocess data
+    X_train = X_train.reshape(-1, 28, 28, 1).astype('float32') / 255
+    X_test = X_test.reshape(-1, 28, 28, 1).astype('float32') / 255
+    y_train_cat = to_categorical(y_train, num_classes)
+    y_test_cat = to_categorical(y_test, num_classes)
+
+    model = create_cnn_model(input_shape, num_classes, conv_layers, conv_filters, dense_layers, dense_units, dropout_rate)
+    model.compile(loss='categorical_crossentropy', optimizer=Adam(learning_rate=learning_rate), metrics=['accuracy'])
+
+    start_time = time.time()
+    history = model.fit(X_train, y_train_cat, epochs=epochs, batch_size=batch_size, validation_data=(X_test, y_test_cat), verbose=1)
+    training_time = time.time() - start_time
+
+    y_pred_cat = model.predict(X_test)
+    y_pred = np.argmax(y_pred_cat, axis=1)
+    accuracy = accuracy_score(y_test, y_pred)
+
+    print(f"Precisión: {accuracy * 100:.2f}%")
+    print(f"Tiempo de entrenamiento: {training_time:.2f} segundos")
+    
+    return accuracy, training_time
+
+def experiment_cnn(X_train, y_train, X_test, y_test):
+    results = {'conv_layers': [], 'conv_filters': [], 'dense_layers': [], 'dense_units': [], 'dropout_rate': [], 'batch_size': [], 'learning_rate': [], 'accuracy': [], 'time': []}
+    configurations = [
+        {'conv_layers': 2, 'conv_filters': 32, 'dense_layers': 1, 'dense_units': 128, 'dropout_rate': 0.25, 'batch_size': 32, 'learning_rate': 0.001, 'epochs': 10},
+        {'conv_layers': 3, 'conv_filters': 64, 'dense_layers': 2, 'dense_units': 256, 'dropout_rate': 0.5, 'batch_size': 64, 'learning_rate': 0.0001, 'epochs': 10},
+        # Add more configurations as needed
+    ]
+    
+    for config in configurations:
+        print(f"Experimentando con {config}")
+        accuracy, training_time = train_and_evaluate_cnn(X_train, y_train, X_test, y_test, **config)
+        results['conv_layers'].append(config['conv_layers'])
+        results['conv_filters'].append(config['conv_filters'])
+        results['dense_layers'].append(config['dense_layers'])
+        results['dense_units'].append(config['dense_units'])
+        results['dropout_rate'].append(config['dropout_rate'])
+        results['batch_size'].append(config['batch_size'])
+        results['learning_rate'].append(config['learning_rate'])
+        results['accuracy'].append(accuracy)
+        results['time'].append(training_time)
+    
+    return results
+
+def plot_cnn_results(results):
+    plt.figure(figsize=(12, 6))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(results['conv_layers'], results['accuracy'], label='Accuracy')
+    plt.xlabel('Number of Convolutional Layers')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy vs Number of Convolutional Layers')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(results['conv_layers'], results['time'], label='Training Time')
+    plt.xlabel('Number of Convolutional Layers')
+    plt.ylabel('Training Time (s)')
+    plt.title('Training Time vs Number of Convolutional Layers')
     plt.legend()
 
     plt.tight_layout()
@@ -630,10 +837,21 @@ def main():
     plot_sklearn_results(results_sklearn)'''
 
     #2B
-    kernel_values = ['rbf']
-    C_values = [0.1, 1, 10]
-    results_svm = experiment_svm(kernel_values, C_values, X_train, y_train, X_test, y_test)
-    plot_svm_results(results_svm)
+    '''# Experimentar con diferentes valores de T y max_depth
+    T_values = [10, 30]
+    max_depth_values = [1, 3]
 
+    results = experiment_deep_tree_adaboost(T_values, max_depth_values, X_train, y_train, X_test, y_test)
+    plot_deep_tree_results(results)'''
+
+    #2C
+    '''results_mlp_corrected = experiment_mlp_corrected(X_train, y_train, X_test, y_test)
+    plot_experiment_mlp_results_corrected(results_mlp_corrected)'''
+
+    # 2D
+    '''results_cnn = experiment_cnn(X_train, y_train, X_test, y_test)
+    plot_cnn_results(results_cnn)'''
+    
 if __name__ == "__main__":
     main()
+    
